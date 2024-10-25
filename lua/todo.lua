@@ -22,8 +22,9 @@ end
 --- @return string
 function Todo:printable_desc(max_width)
 	local check = " "
-	if self.completed then check = config.get_conf().completed_symbol end
-	local str = "[" .. check .. "] " .. self.desc
+	local symb = config.get_conf().item_symbols
+	if self.completed then check = symb.completed else check = symb.todo end
+	local str = check .. " " .. self.desc
 	return Strings.clamp(str, max_width, config.get_conf().text_ellipsis)
 end
 

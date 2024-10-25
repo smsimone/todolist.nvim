@@ -19,6 +19,23 @@ local function get_cursor_index()
 	return vim.api.nvim_win_get_cursor(vim.api.nvim_get_current_win())[1]
 end
 
+--- @param line integer
+local function set_cursor_index(line)
+	vim.api.nvim_win_set_cursor(vim.api.nvim_get_current_win(), { line, 0 })
+end
+
+function M:reorder_elements()
+	---@type Todo[]
+	local reordered = {}
+	for _, value in pairs(self.todos) do
+		if not value.completed then table.insert(reordered, value) end
+	end
+	for _, value in pairs(self.todos) do
+		if value.completed then table.insert(reordered, value) end
+	end
+	self.todos = reordered
+end
+
 function M:toggle_buffer()
 	local folder   = vim.fn.stdpath('data') .. "/todolist/"
 	self.file_path = folder .. vim.fn.fnamemodify(vim.loop.cwd(), ":t") .. ".todolist"
@@ -53,6 +70,10 @@ function M:rewrite()
 	end
 	max_width = max_width - #configs.get_conf().text_ellipsis
 
+	if configs.get_conf().reorder_elements then
+		self:reorder_elements()
+	end
+
 	--- @type string[]
 	local lines = {}
 	for _, item in ipairs(self.todos) do
@@ -70,14 +91,11 @@ function M:serialize()
 	for _, item in pairs(self.todos) do
 		file:write(item:serialize() .. "\n")
 	end
-	vim.notify("Wrote " .. #self.todos .. " items")
 	file:close()
-	vim.notify("Wrote backup", vim.log.levels.DEBUG)
 end
 
 function M:deserialize()
 	local lines = require 'file'.file.read_lines(self.file_path)
-	vim.notify("Read " .. #lines .. " lines from backup")
 	if #lines == 0 then return end
 
 	for _, line in pairs(lines) do
@@ -93,22 +111,42 @@ function M:register_keymaps()
 		noremap = true,
 		silent = true,
 		callback = function()
-			local Popup = require('nui.popup')
-			local Layout = require('nui.layout')
+			local idx = get_cursor_index()
+			alerts.info('Todo Item', self.todos[idx].desc)
+		end
+	})
 
-			local popup = Popup({ enter = true, border = 'single' })
-			local layout = Layout(
-				{
-					position = "50%",
-					size = { width = 80, height = '40%' },
-				},
-				Layout.Box({
-					Layout.Box(popup, { size = "100%" })
-				}),
-				{ dir = "row" }
-			)
+	-- Move down one position
+	vim.api.nvim_buf_set_keymap(self.bufId, 'n', '<S-j>', '', {
+		desc = "Add item",
+		noremap = true,
+		silent = true,
+		callback = function()
+			local idx = get_cursor_index()
+			if idx == #self.todos then return end
+			local to_move = self.todos[idx]
+			self.todos[idx] = self.todos[idx + 1]
+			self.todos[idx + 1] = to_move
+			set_cursor_index(idx + 1)
+			vim.schedule(function() self:rewrite() end)
+			vim.schedule(function() self:serialize() end)
+		end
+	})
 
-			layout:mount()
+	-- Move down one position
+	vim.api.nvim_buf_set_keymap(self.bufId, 'n', '<S-k>', '', {
+		desc = "Add item",
+		noremap = true,
+		silent = true,
+		callback = function()
+			local idx = get_cursor_index()
+			if idx == 1 then return end
+			local to_move = self.todos[idx]
+			self.todos[idx] = self.todos[idx - 1]
+			self.todos[idx - 1] = to_move
+			set_cursor_index(idx - 1)
+			vim.schedule(function() self:rewrite() end)
+			vim.schedule(function() self:serialize() end)
 		end
 	})
 
@@ -142,6 +180,19 @@ function M:register_keymaps()
 		callback = function()
 			local idx = get_cursor_index()
 			self.todos[idx]:toggle_completed()
+			vim.schedule(function() self:rewrite() end)
+			vim.schedule(function() self:serialize() end)
+		end
+	})
+
+	-- Remove selected element
+	vim.api.nvim_buf_set_keymap(self.bufId, "n", "x", "", {
+		desc = "Mark as complete",
+		noremap = true,
+		silent = true,
+		callback = function()
+			local idx = get_cursor_index()
+			table.remove(self.todos, idx)
 			vim.schedule(function() self:rewrite() end)
 			vim.schedule(function() self:serialize() end)
 		end

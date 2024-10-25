@@ -12,4 +12,10 @@ vim.api.nvim_set_keymap("n", "<leader>tt", "<cmd>TodoToggle<cr>", {
 	desc = "Toggle todos"
 })
 
+vim.api.nvim_create_autocmd("VimResized", {
+	callback = function()
+		vim.schedule(function() require('buf'):rewrite() end)
+	end
+})
+
 ensure_folder()

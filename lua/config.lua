@@ -2,14 +2,23 @@
 ---@field conf configs
 local M = {}
 
+--- @class symbols
+--- @field completed string
+--- @field todo string
+
 --- @class configs
---- @field completed_symbol string
+--- @field item_symbols symbols
 --- @field max_length integer? if null, will be used the column width
 --- @field text_ellipsis string
+--- @field reorder_elements boolean if true, the completed elements will be put at the end of the list
 local config = {
-	completed_symbol = 'x',
+	item_symbols = {
+		todo = '[]',
+		completed = '[x]',
+	},
 	max_length = nil,
-	text_ellipsis = '...'
+	text_ellipsis = '...',
+	reorder_elements = false
 }
 
 --- get the full user config or just a specified value
