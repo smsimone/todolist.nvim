@@ -1,5 +1,7 @@
 local bufname = 'TodoList'
 local Todo    = require('todo')
+local configs = require('config')
+local alerts  = require('alerts')
 
 local M       = {
 	--- @type integer | nil id of the list buffer
@@ -31,7 +33,6 @@ function M:toggle_buffer()
 		self:deserialize()
 		self.bufId = vim.api.nvim_create_buf(false, true)
 		vim.api.nvim_buf_set_name(self.bufId, bufname)
-		self:rewrite()
 	end
 
 	self:register_keymaps()
@@ -39,16 +40,23 @@ function M:toggle_buffer()
 	vim.cmd("vsplit")
 	vim.api.nvim_win_set_buf(0, self.bufId)
 	vim.api.nvim_win_set_width(0, 30)
-	self:rewrite()
+	vim.schedule(function() self:rewrite() end)
 end
 
 function M:rewrite()
 	vim.api.nvim_buf_set_option(self.bufId, 'modifiable', true)
 
+	local max_width = configs.get_conf().max_length
+	if not max_width then
+		local winid = vim.fn.bufwinid(self.bufId)
+		max_width = vim.api.nvim_win_get_width(winid) - 5
+	end
+	max_width = max_width - #configs.get_conf().text_ellipsis
+
 	--- @type string[]
 	local lines = {}
 	for _, item in ipairs(self.todos) do
-		table.insert(lines, item:printable_desc())
+		table.insert(lines, item:printable_desc(max_width))
 	end
 
 	vim.api.nvim_buf_set_lines(self.bufId, 0, -1, false, lines)
@@ -79,6 +87,31 @@ function M:deserialize()
 end
 
 function M:register_keymaps()
+	-- Open todo in a floating window
+	vim.api.nvim_buf_set_keymap(self.bufId, "n", "<cr>", "", {
+		desc = "Show item",
+		noremap = true,
+		silent = true,
+		callback = function()
+			local Popup = require('nui.popup')
+			local Layout = require('nui.layout')
+
+			local popup = Popup({ enter = true, border = 'single' })
+			local layout = Layout(
+				{
+					position = "50%",
+					size = { width = 80, height = '40%' },
+				},
+				Layout.Box({
+					Layout.Box(popup, { size = "100%" })
+				}),
+				{ dir = "row" }
+			)
+
+			layout:mount()
+		end
+	})
+
 	-- Creates a new item
 	vim.api.nvim_buf_set_keymap(self.bufId, "n", "a", "",
 		{
@@ -86,21 +119,18 @@ function M:register_keymaps()
 			noremap = true,
 			silent = true,
 			callback = function()
-				vim.ui.input(
-					{ prompt = "Write something: " },
-					---@param input string | nil
-					function(input)
-						if not input then return end
-						local item = Todo:new(input, false)
-						if #self.todos == 0 then
-							table.insert(self.todos, item)
-						else
-							local idx = get_cursor_index()
-							table.insert(self.todos, idx + 1, item)
-						end
-						self:rewrite()
-						vim.schedule(function() self:serialize() end)
-					end)
+				alerts.input("Write something", nil, function(result)
+					if not result then return end
+					local item = Todo:new(result, false)
+					if #self.todos == 0 then
+						table.insert(self.todos, item)
+					else
+						local idx = get_cursor_index()
+						table.insert(self.todos, idx + 1, item)
+					end
+					vim.schedule(function() self:rewrite() end)
+					vim.schedule(function() self:serialize() end)
+				end)
 			end
 		})
 
@@ -112,7 +142,7 @@ function M:register_keymaps()
 		callback = function()
 			local idx = get_cursor_index()
 			self.todos[idx]:toggle_completed()
-			self:rewrite()
+			vim.schedule(function() self:rewrite() end)
 			vim.schedule(function() self:serialize() end)
 		end
 	})
@@ -125,19 +155,13 @@ function M:register_keymaps()
 			silent = true,
 			callback = function()
 				local idx = get_cursor_index()
-				vim.ui.input(
-					{ prompt = "Write something: ", default = self.todos[idx].desc },
-					--- @param input string | nil
-					function(input)
-						if not input then return end
-						print("changing at index " .. idx)
-						local tmp = self.todos[idx]
-						print("changing from " .. tmp.desc .. " to " .. input)
-						self.todos[idx] = Todo:new(input, false)
-						self:rewrite()
-						vim.schedule(function() self:serialize() end)
-					end
-				)
+
+				alerts.input("Write something", self.todos[idx].desc, function(input)
+					if not input then return end
+					self.todos[idx] = Todo:new(input, false)
+					vim.schedule(function() self:rewrite() end)
+					vim.schedule(function() self:serialize() end)
+				end)
 			end
 		})
 end

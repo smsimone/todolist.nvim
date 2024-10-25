@@ -12,6 +12,7 @@ To install the plugin, add it to your preferred package manager. Here’s an exa
   "smsimone/todolist.nvim",
   dependencies = {
     "nvim-lua/plenary.nvim",
+	"MunifTanjim/nui.nvim",
   },
   config = function()
     require('todolist').setup({})

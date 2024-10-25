@@ -27,4 +27,14 @@ function M.split(data, sep)
 	return result
 end
 
+--- @param str string
+--- @param width integer
+--- @param ellipsis string
+--- @return string
+function M.clamp(str, width, ellipsis)
+	if #str <= width then return str end
+	local substr = str:sub(1, width)
+	return substr .. ellipsis
+end
+
 return M

@@ -1,4 +1,5 @@
 local config = require 'config'
+local Strings = require 'strings'
 
 ---@class Todo
 ---@field desc string
@@ -17,11 +18,13 @@ function Todo:new(desc, completed)
 	return instance
 end
 
+--- @param max_width integer
 --- @return string
-function Todo:printable_desc()
+function Todo:printable_desc(max_width)
 	local check = " "
-	if self.completed then check = config.get('completed_symbol') end
-	return "[" .. check .. "] " .. self.desc
+	if self.completed then check = config.get_conf().completed_symbol end
+	local str = "[" .. check .. "] " .. self.desc
+	return Strings.clamp(str, max_width, config.get_conf().text_ellipsis)
 end
 
 function Todo:toggle_completed()
