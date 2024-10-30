@@ -1,96 +1,161 @@
 local state = require('todolist.state')
-local n = require('nui-components')
+local NuiTree = require('nui.tree')
+local Popup = require('nui.popup')
+local Layout = require('nui.layout')
+local Input = require("nui.input")
 
 --- @class TreeNode
 --- @field text string
 --- @field is_done boolean
 
-local M = {}
+--- @class Mapping
+--- @field lhs string
+--- @field command string | function
 
+local M = {}
+local timer = nil
+
+local function debounce(fn, delay)
+	return function(...)
+		local args = { ... }
+
+		if timer then
+			timer:close()
+			timer = nil
+		end
+
+		timer = vim.defer_fn(function()
+			fn(unpack(args))
+			timer = nil
+		end, delay)
+	end
+end
 
 --- Shows all the saved items
 function M.show_items()
 	local items = state.state.get_items()
-	local render_tree = nil
-
 	local nodes = {}
 	for _, i in pairs(items) do
-		table.insert(nodes, n.node({ text = i.name, is_done = i.completed }))
+		table.insert(nodes, NuiTree.Node({ text = i.name, is_done = i.completed }))
 	end
 
-	local signal = n.create_signal({ query = '', data = nodes })
-
-	local renderer = n.create_renderer({
-		width = 60,
-		height = 10,
-		mappings = {}
+	local popup = Popup({
+		focusable = true,
+		border = {
+			style = 'rounded',
+			text = {
+				top = '[2] - Tasks',
+				top_align = 'left'
+			}
+		},
 	})
 
-	local subscription = signal:observe(function(old, curr)
-		if not render_tree then return end
-
-		--- @type string
-		local query = curr.query
-		local filtered = {}
-		for _, item in pairs(curr.data) do
+	local tree = NuiTree({
+		bufnr        = popup.bufnr,
+		border       = 'single',
+		nodes        = nodes,
+		focusable    = true,
+		prepare_node = function(node, _)
 			--- @type string
-			local text = item.text
-			if not text:find(query) then
-				render_tree:remove_node(item:get_id())
-			end
-		end
+			local line = node.text
 
-		curr.data = filtered
-		if render_tree then
-			-- vim.print(vim.inspect(render_tree))
+			if node.is_done then
+				line = "✔ " .. line
+			else
+				line = "x " .. line
+			end
+
+			return line
 		end
+	})
+
+	local searchBox = Input({
+		enter = true,
+		focusable = true,
+		border = {
+			style = 'single',
+			text = { top = "[1] - Search something", top_align = 'left' }
+		},
+		win_options = {
+			winhighlight = 'Normal:Normal,FloatBorder:Normal'
+		}
+	}, {
+		prompt = "> ",
+		on_change = function(value)
+			debounce(function()
+				-- Always removes all nodes
+				for _, node in pairs(tree:get_nodes()) do
+					tree:remove_node(node:get_id())
+				end
+
+				if value == '' then
+					for _, node in pairs(nodes) do
+						tree:add_node(node)
+					end
+				else
+					for _, node in pairs(nodes) do
+						if node.text:find(value) then
+							tree:add_node(node)
+						end
+					end
+				end
+
+				tree:render()
+			end, 400)()
+		end
+	})
+
+
+	local children = { searchBox, popup }
+
+	local layout = Layout(
+		{
+			position = "50%",
+			relative = { type = 'editor' },
+			size = { width = 80, height = 10 },
+		},
+		Layout.Box({
+			Layout.Box(searchBox, { size = "10%" }),
+			Layout.Box(popup, { size = "90%" }),
+		}, { dir = "col" })
+	)
+
+	layout:mount()
+	tree:render()
+
+	popup:map("n", "<esc>", function()
+		layout:unmount()
+	end)
+	searchBox:map("n", "<esc>", function()
+		layout:unmount()
 	end)
 
-	local body = function()
-		return n.rows({ flex = 2 },
-			n.text_input({
-				autofocus = true,
-				size = 1,
-				max_lines = 1,
-				value = signal.query,
-				border_label = "Filter",
-				on_change = function(value)
-					signal.query = value
-				end
-			}),
-			n.tree({
-				flex = 1,
-				border_label = 'Tasks',
-				data = signal.data,
-				on_select = function(node, component)
-					local tree = component:get_tree()
-					if not render_tree then render_tree = tree end
+	--- TODO: is not working right now
+	for _, child in pairs(children) do
+		local bufid = vim.api.nvim_win_get_buf(child.winid)
 
-					node.is_done = not node.is_done
-					tree:render()
-				end,
-				prepare_node = function(node, line, component)
-					local tree = component:get_tree()
-					if not render_tree then render_tree = tree end
-
-					if node.is_done then
-						line:append("✔", "String")
-					else
-						line:append("◻", "Comment")
-					end
-
-					line:append(" ")
-					line:append(node.text)
-
-					return line
+		for i = 1, #children do
+			vim.api.nvim_buf_set_keymap(bufid, 'n', '' .. i, '', {
+				noremap = true,
+				silent = true,
+				callback = function()
+					local item = children[i]
+					vim.notify('Setting current win to ' .. item.winid)
+					vim.api.nvim_set_current_win(item.winid)
 				end
 			})
-		)
+		end
 	end
-	renderer:on_unmount(function()
-		subscription:unsubscribe()
+
+	popup:map("n", "<cr>", function()
+		local node = tree:get_node()
+		node.is_done = not node.is_done
+		tree:render()
 	end)
-	renderer:render(body)
+
+	popup:on("BufLeave", function()
+		layout:unmount()
+	end, { once = true })
 end
 
 return M
