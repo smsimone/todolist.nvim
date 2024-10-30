@@ -19,8 +19,9 @@ function M.create_new_item()
 						return
 					end
 					local name = title.value:get_value()
+					local desc = description.value:get_value()
 
-					state.state.add_item(state.Todo.new(name))
+					state.state.add_item(state.Todo.new(name, desc))
 					vim.notify("Todo item '" .. name .. "' created", vim.log.levels.INFO)
 					renderer:close()
 				end

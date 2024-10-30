@@ -36,7 +36,7 @@ function M.show_items()
 	local items = state.state.get_items()
 	local nodes = {}
 	for _, i in pairs(items) do
-		table.insert(nodes, NuiTree.Node({ text = i.name, is_done = i.completed }))
+		table.insert(nodes, NuiTree.Node({ text = i.name, is_done = i.completed, description = i.description }))
 	end
 
 	local popup = Popup({
@@ -65,7 +65,11 @@ function M.show_items()
 				line = "x " .. line
 			end
 
-			return line
+			if node.description then
+				return line .. " (" .. #node.description .. ")"
+			else
+				return line .. '(no desc)'
+			end
 		end
 	})
 
@@ -123,12 +127,22 @@ function M.show_items()
 	layout:mount()
 	tree:render()
 
-	popup:map("n", "<esc>", function()
-		layout:unmount()
-	end)
-	searchBox:map("n", "<esc>", function()
-		layout:unmount()
-	end)
+	for _, item in pairs(children) do
+		item:map("n", "<esc>", function()
+			layout:unmount()
+		end)
+	end
+
+	local current = 1
+	local function move_to_next_win()
+		local next = current + 1
+		if next > #children then
+			next = 1
+		end
+		local item = children[next]
+		vim.api.nvim_set_current_win(item.winid)
+		current = next
+	end
 
 	--- TODO: is not working right now
 	for _, child in pairs(children) do
@@ -140,12 +154,20 @@ function M.show_items()
 				silent = true,
 				callback = function()
 					local item = children[i]
-					vim.notify('Setting current win to ' .. item.winid)
 					vim.api.nvim_set_current_win(item.winid)
+				end
+			})
+
+			vim.api.nvim_buf_set_keymap(bufid, 'n', '<Tab>', '', {
+				silent = false,
+				noremap = true,
+				callback = function()
+					move_to_next_win()
 				end
 			})
 		end
 	end
+
 
 	popup:map("n", "<cr>", function()
 		local node = tree:get_node()
@@ -153,9 +175,20 @@ function M.show_items()
 		tree:render()
 	end)
 
-	popup:on("BufLeave", function()
-		layout:unmount()
-	end, { once = true })
+	popup:map('n', '<space>', function()
+		local node = tree:get_node()
+		if node.description then
+			vim.notify(node.description)
+		else
+			vim.notify('Item has no description')
+		end
+	end)
+
+	popup:map("n", "x", function()
+		local node = tree:get_node()
+		tree:remove_node(node:get_id())
+		tree:render()
+	end)
 end
 
 return M
