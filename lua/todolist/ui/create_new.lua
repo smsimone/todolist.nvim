@@ -1,64 +1,134 @@
 local state = require('todolist.state')
-
-local n = require('nui-components')
+local Layout = require('nui.layout')
+local Input = require("nui.input")
 
 local M = {}
 
+--- @param title string
+---@param content string?
+local function add_item(title, content)
+	content = content == '' and nil or content
+	state.state.add_item(state.Todo.new(title, content))
+end
+
 function M.create_new_item()
-	local renderer = n.create_renderer({ width = 60, height = 10 })
+	--- @type string
+	local title = ''
+	--- @type string?
+	local content = nil
 
-	local title, description = n.create_signal({ value = '' }), n.create_signal({ value = '' })
 
-	local body = function()
-		return n.form({
-				id = 'new_item',
-				submit_key = '<S-CR>',
-				on_submit = function(is_valid)
-					if not is_valid then
-						vim.notify("Check if it's valid", vim.log.levels.ERROR)
-						return
-					end
-					local name = title.value:get_value()
-					local desc = description.value:get_value()
+	local task_title = Input({
+		enter = true,
+		focusable = true,
+		border = {
+			style = 'single',
+			text = { top = "Name", top_align = 'left' }
+		},
+		win_options = {
+			winhighlight = 'Normal:Normal,FloatBorder:Normal'
+		}
+	}, {
+		on_change = function(value)
+			title = value
+		end
+	})
 
-					state.state.add_item(state.Todo.new(name, desc))
-					vim.notify("Todo item '" .. name .. "' created", vim.log.levels.INFO)
-					renderer:close()
-				end
-			},
-			n.text_input({
-				autofocus = true,
-				autoresize = true,
-				size = 1,
-				value = title.value,
-				border_label = 'Title',
-				max_lines = 1,
-				validate = n.validator.all(n.validator.min_length(3), n.validator.max_length(30)),
-				on_change = function(value, component)
-					title.value = value
+	local task_content = Input({
+		focusable = true,
+		border = {
+			style = 'single',
+			text = { top = "Description", top_align = 'left' }
+		},
+		win_options = {
+			winhighlight = 'Normal:Normal,FloatBorder:Normal'
+		}
+	}, {
+		on_change = function(value)
+			content = value
+		end
+	})
 
-					component:modify_buffer_content(function()
-						component:set_border_text("bottom", "Length: " .. #value .. "/30",
-							"right")
-					end)
-				end,
-			}),
-			n.text_input({
-				flex = 1,
-				border_label = 'Description',
-				value = description.value,
-				on_change = function(value, component)
-					description.value = value
+	local children = { task_title, task_content }
 
-					component:modify_buffer_content(function()
-						component:set_border_text("bottom", "Length: " .. #value, "right")
-					end)
-				end,
-			})
-		)
+	local layout = Layout(
+		{
+			position = "50%",
+			relative = { type = 'editor' },
+			size = { width = 80, height = 10 },
+		},
+		Layout.Box({
+			Layout.Box(task_title, { size = "10%" }),
+			Layout.Box(task_content, { size = "90%" }),
+		}, { dir = "col" })
+	)
+
+	layout:mount()
+
+	for _, item in pairs(children) do
+		item:map("n", "<esc>", function()
+			layout:unmount()
+		end)
 	end
 
-	renderer:render(body)
+	local current = 1
+	local function move_to_next_win()
+		local next = current + 1
+		if next > #children then
+			next = 1
+		end
+		local item = children[next]
+		vim.api.nvim_set_current_win(item.winid)
+		current = next
+	end
+
+	for _, child in pairs(children) do
+		local bufid = vim.api.nvim_win_get_buf(child.winid)
+
+		for i = 1, #children do
+			vim.api.nvim_buf_set_keymap(bufid, 'n', '' .. i, '', {
+				noremap = true,
+				silent = true,
+				callback = function()
+					local item = children[i]
+					vim.api.nvim_set_current_win(item.winid)
+				end
+			})
+
+			vim.api.nvim_buf_set_keymap(bufid, 'n', '<Tab>', '', {
+				silent = false,
+				noremap = true,
+				callback = function()
+					move_to_next_win()
+				end
+			})
+
+			vim.api.nvim_buf_set_keymap(bufid, 'i', '<Tab>', '', {
+				silent = false,
+				noremap = true,
+				callback = function()
+					move_to_next_win()
+				end
+			})
+		end
+	end
+
+	for _, item in pairs(children) do
+		item:map('n', '<S-CR>', function()
+			add_item(title, content)
+			vim.notify('Added task with title ' .. title)
+			layout:unmount()
+		end)
+		item:map('i', '<S-CR>', function()
+			add_item(title, content)
+			vim.notify('Added task with title ' .. title)
+			layout:unmount()
+		end)
+		item:map("n", "<esc>", function()
+			layout:unmount()
+		end)
+	end
+	layout:mount()
 end
 
 return M

@@ -1,5 +1,6 @@
 local state = require('todolist.state')
 local NuiTree = require('nui.tree')
+local NuiLine = require("nui.line")
 local Popup = require('nui.popup')
 local Layout = require('nui.layout')
 local Input = require("nui.input")
@@ -36,7 +37,14 @@ function M.show_items()
 	local items = state.state.get_items()
 	local nodes = {}
 	for _, i in pairs(items) do
-		table.insert(nodes, NuiTree.Node({ text = i.name, is_done = i.completed, description = i.description }))
+		local node = nil
+		node = NuiTree.Node({
+			text = i.name,
+			is_done = i.completed,
+			description = i.description
+		})
+
+		table.insert(nodes, node)
 	end
 
 	local popup = Popup({
@@ -56,20 +64,18 @@ function M.show_items()
 		nodes        = nodes,
 		focusable    = true,
 		prepare_node = function(node, _)
-			--- @type string
-			local line = node.text
+			local line = NuiLine()
+			line:append(string.rep("  ", node:get_depth() - 1))
 
-			if node.is_done then
-				line = "✔ " .. line
-			else
-				line = "x " .. line
+
+			if node['is_done'] ~= nil then
+				line:append(node.is_done and "✔ " or "◻ ")
 			end
 
-			if node.description then
-				return line .. " (" .. #node.description .. ")"
-			else
-				return line .. '(no desc)'
-			end
+			line:append(node.text)
+			line:append("  ")
+
+			return line
 		end
 	})
 
@@ -108,7 +114,6 @@ function M.show_items()
 			end, 400)()
 		end
 	})
-
 
 	local children = { searchBox, popup }
 
@@ -168,27 +173,19 @@ function M.show_items()
 		end
 	end
 
+	local map_opts = { noremap = true, nowait = true }
 
 	popup:map("n", "<cr>", function()
 		local node = tree:get_node()
 		node.is_done = not node.is_done
 		tree:render()
-	end)
-
-	popup:map('n', '<space>', function()
-		local node = tree:get_node()
-		if node.description then
-			vim.notify(node.description)
-		else
-			vim.notify('Item has no description')
-		end
-	end)
+	end, map_opts)
 
 	popup:map("n", "x", function()
 		local node = tree:get_node()
 		tree:remove_node(node:get_id())
 		tree:render()
-	end)
+	end, map_opts)
 end
 
 return M
