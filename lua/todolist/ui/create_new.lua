@@ -5,10 +5,17 @@ local Input = require("nui.input")
 local M = {}
 
 --- @param title string
----@param content string?
+--- @param content string?
+--- @return boolean
 local function add_item(title, content)
+	vim.notify('Adding with title "' .. title .. '" porcoddio')
+	if title == '' or title == nil then
+		return false
+	end
+
 	content = content == '' and nil or content
 	state.state.add_item(state.Todo.new(title, content))
+	return true
 end
 
 function M.create_new_item()
@@ -31,7 +38,7 @@ function M.create_new_item()
 	}, {
 		on_change = function(value)
 			title = value
-		end
+		end,
 	})
 
 	local task_content = Input({
@@ -115,14 +122,20 @@ function M.create_new_item()
 
 	for _, item in pairs(children) do
 		item:map('n', '<S-CR>', function()
-			add_item(title, content)
-			vim.notify('Added task with title ' .. title)
-			layout:unmount()
+			if add_item(title, content) then
+				vim.notify('Added task with title ' .. title)
+				layout:unmount()
+			else
+				vim.notify('Check your input', vim.log.levels.ERROR)
+			end
 		end)
 		item:map('i', '<S-CR>', function()
-			add_item(title, content)
-			vim.notify('Added task with title ' .. title)
-			layout:unmount()
+			if add_item(title, content) then
+				vim.notify('Added task with title ' .. title)
+				layout:unmount()
+			else
+				vim.notify('Check your input', vim.log.levels.ERROR)
+			end
 		end)
 		item:map("n", "<esc>", function()
 			layout:unmount()

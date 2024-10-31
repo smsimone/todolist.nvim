@@ -28,7 +28,7 @@ end
 
 on_load()
 
-local function persist()
+function State.persist()
 	--- @type string
 	local values = vim.fn.json_encode(items)
 
@@ -59,7 +59,7 @@ end
 --- @param item Todo
 function State.add_item(item)
 	table.insert(items, item)
-	vim.schedule(function() persist() end)
+	vim.schedule(function() State.persist() end)
 end
 
 return State

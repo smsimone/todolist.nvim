@@ -178,6 +178,7 @@ function M.show_items()
 	popup:map("n", "<cr>", function()
 		local node = tree:get_node()
 		node.is_done = not node.is_done
+		vim.schedule(function() state.state.persist() end)
 		tree:render()
 	end, map_opts)
 
